@@ -30,7 +30,15 @@ def integrated_lufs(path: Path) -> float:
         "-f", "null",
         "-",
     ]
-    completed = subprocess.run(command, capture_output=True, text=True, check=False)
+    # FFmpeg diagnostics are UTF-8; do not decode them with the Windows locale.
+    completed = subprocess.run(
+        command,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
     output = completed.stderr
     matches = _INTEGRATED_RE.findall(output)
     if not matches:

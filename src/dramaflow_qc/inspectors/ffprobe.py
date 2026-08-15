@@ -55,7 +55,16 @@ def probe(path: Path) -> MediaInfo:
         "-of", "json",
         str(path),
     ]
-    completed = subprocess.run(command, capture_output=True, text=True, check=False)
+    # FFprobe emits UTF-8 JSON; decoding with the Windows locale (often GBK)
+    # can fail when metadata or paths contain non-ASCII characters.
+    completed = subprocess.run(
+        command,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
     if completed.returncode != 0:
         raise FFprobeError(completed.stderr.strip() or "ffprobe failed")
 
