@@ -55,20 +55,16 @@ def probe(path: Path) -> MediaInfo:
         "-of", "json",
         str(path),
     ]
-    # FFprobe emits UTF-8 JSON; decoding with the Windows locale (often GBK)
-    # can fail when metadata or paths contain non-ASCII characters.
-    completed = subprocess.run(
-        command,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        check=False,
-    )
+    completed = subprocess.run(command, capture_output=True, check=False)
+    try:
+        stdout = completed.stdout.decode("utf-8")
+        stderr = completed.stderr.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise FFprobeError("ffprobe output could not be decoded as UTF-8") from exc
     if completed.returncode != 0:
-        raise FFprobeError(completed.stderr.strip() or "ffprobe failed")
+        raise FFprobeError(stderr.strip() or "ffprobe failed")
 
-    data = json.loads(completed.stdout)
+    data = json.loads(stdout)
     streams = data.get("streams", [])
     video = next((s for s in streams if s.get("codec_type") == "video"), {})
     audio = next((s for s in streams if s.get("codec_type") == "audio"), {})

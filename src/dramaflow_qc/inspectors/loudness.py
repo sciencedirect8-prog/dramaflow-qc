@@ -30,16 +30,11 @@ def integrated_lufs(path: Path) -> float:
         "-f", "null",
         "-",
     ]
-    # FFmpeg diagnostics are UTF-8; do not decode them with the Windows locale.
-    completed = subprocess.run(
-        command,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        check=False,
-    )
-    output = completed.stderr
+    completed = subprocess.run(command, capture_output=True, check=False)
+    try:
+        output = completed.stderr.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise LoudnessError("ffmpeg output could not be decoded as UTF-8") from exc
     matches = _INTEGRATED_RE.findall(output)
     if not matches:
         raise LoudnessError("Could not parse integrated loudness from ffmpeg ebur128 output")
