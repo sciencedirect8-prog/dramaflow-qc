@@ -55,11 +55,16 @@ def probe(path: Path) -> MediaInfo:
         "-of", "json",
         str(path),
     ]
-    completed = subprocess.run(command, capture_output=True, text=True, check=False)
+    completed = subprocess.run(command, capture_output=True, check=False)
+    try:
+        stdout = completed.stdout.decode("utf-8")
+        stderr = completed.stderr.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise FFprobeError("ffprobe output could not be decoded as UTF-8") from exc
     if completed.returncode != 0:
-        raise FFprobeError(completed.stderr.strip() or "ffprobe failed")
+        raise FFprobeError(stderr.strip() or "ffprobe failed")
 
-    data = json.loads(completed.stdout)
+    data = json.loads(stdout)
     streams = data.get("streams", [])
     video = next((s for s in streams if s.get("codec_type") == "video"), {})
     audio = next((s for s in streams if s.get("codec_type") == "audio"), {})

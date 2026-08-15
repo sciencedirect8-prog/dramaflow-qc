@@ -3,11 +3,13 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
+from unittest.mock import Mock, patch
 from pathlib import Path
 
 from dramaflow_qc.config import CONFIG_NAME, ProjectRules, load_config, write_default_config
 from dramaflow_qc.hash_utils import sha256_file
-from dramaflow_qc.inspectors.ffprobe import parse_fraction
+from dramaflow_qc.inspectors.ffprobe import FFprobeError, parse_fraction, probe
+from dramaflow_qc.inspectors.loudness import LoudnessError, integrated_lufs
 from dramaflow_qc.inspectors.project import inspect_filename, inspect_project
 from dramaflow_qc.models import CheckResult, QCReport, Status
 from dramaflow_qc.report import render_markdown
@@ -18,6 +20,46 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(parse_fraction("24/1"), 24.0)
         self.assertAlmostEqual(parse_fraction("24000/1001"), 23.9760239, places=5)
         self.assertIsNone(parse_fraction("0/0"))
+
+    def test_probe_uses_utf8_for_non_ascii_paths(self):
+        payload = json.dumps({
+            "streams": [{
+                "codec_type": "video",
+                "width": 1080,
+                "height": 1920,
+                "avg_frame_rate": "24/1",
+                "codec_name": "h264",
+            }],
+            "format": {"duration": "1.0"},
+        })
+        completed = Mock(returncode=0, stdout=payload.encode("utf-8"), stderr=b"")
+        with patch("dramaflow_qc.inspectors.ffprobe.shutil.which", return_value="ffprobe"), \
+             patch("dramaflow_qc.inspectors.ffprobe.subprocess.run", return_value=completed) as run:
+            info = probe(Path("项目/成片.mp4"))
+        self.assertEqual(info.width, 1080)
+        self.assertEqual(run.call_args.kwargs, {"capture_output": True, "check": False})
+
+    def test_loudness_uses_utf8_for_non_ascii_paths(self):
+        completed = Mock(returncode=0, stdout=b"", stderr="路径 项目/成片.mp4\n  I:         -16.0 LUFS\n".encode("utf-8"))
+        with patch("dramaflow_qc.inspectors.loudness.shutil.which", return_value="ffmpeg"), \
+             patch("dramaflow_qc.inspectors.loudness.subprocess.run", return_value=completed) as run:
+            value = integrated_lufs(Path("项目/成片.mp4"))
+        self.assertEqual(value, -16.0)
+        self.assertEqual(run.call_args.kwargs, {"capture_output": True, "check": False})
+
+    def test_probe_rejects_invalid_utf8_output(self):
+        completed = Mock(returncode=0, stdout=b"{\xff", stderr=b"")
+        with patch("dramaflow_qc.inspectors.ffprobe.shutil.which", return_value="ffprobe"), \
+             patch("dramaflow_qc.inspectors.ffprobe.subprocess.run", return_value=completed):
+            with self.assertRaisesRegex(FFprobeError, "could not be decoded as UTF-8"):
+                probe(Path("项目/成片.mp4"))
+
+    def test_loudness_rejects_invalid_utf8_output(self):
+        completed = Mock(returncode=0, stdout=b"", stderr=b"ffmpeg\xff")
+        with patch("dramaflow_qc.inspectors.loudness.shutil.which", return_value="ffmpeg"), \
+             patch("dramaflow_qc.inspectors.loudness.subprocess.run", return_value=completed):
+            with self.assertRaisesRegex(LoudnessError, "could not be decoded as UTF-8"):
+                integrated_lufs(Path("项目/成片.mp4"))
 
     def test_sha256(self):
         with tempfile.TemporaryDirectory() as tmp:
