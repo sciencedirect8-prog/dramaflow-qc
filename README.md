@@ -6,7 +6,7 @@ It turns repeatable delivery requirements into machine-checkable rules and produ
 
 ## Project status
 
-`0.1.0-alpha` — usable locally, API and configuration may still change before `1.0`.
+`0.1.1-alpha` — usable locally, API and configuration may still change before `1.0`.
 
 ## V0.1 scope
 
