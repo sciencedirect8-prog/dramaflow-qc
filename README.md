@@ -88,8 +88,8 @@ Edit these values to match your own pipeline.
 
 ## Exit codes
 
-- `0`: PASS or WARNING
-- `2`: FAIL / invalid target
+- `0`: QC completed without FAIL results.
+- `2`: QC failed, requested validation could not be completed, invalid input was supplied, or an essential requested dependency was unavailable.
 
 This makes DramaFlow QC suitable for local automation and CI.
 
