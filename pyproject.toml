@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dramaflow-qc"
-version = "0.1.1"
+version = "0.1.2"
 description = "Local-first quality-control CLI for AI video and short-drama production pipelines."
 readme = "README.md"
 requires-python = ">=3.10"

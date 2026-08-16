@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.2 - 2026-08-16
+
+Maintenance alpha release.
+
+### Fixed
+
+- Required FFprobe absence now produces a failed QC result instead of a warning with exit code 0.
+- Missing FFmpeg now fails when loudness analysis is requested.
+- `--no-loudness` continues to work without requiring FFmpeg.
+- Ordinary non-fatal WARNING results continue to return successful exit status.
+
+### Testing
+
+- Added regression coverage for missing FFprobe and FFmpeg.
+- Added CLI/report exit-code tests for unavailable required media tools.
+- Test suite increased from 14 to 19 tests.
+
 ## 0.1.1 - 2026-08-16
 
 Maintenance alpha release.
