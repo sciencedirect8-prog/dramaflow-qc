@@ -13,7 +13,7 @@ def inspect_media(path: Path, rules: VideoRules, check_loudness: bool = True) ->
     try:
         info = probe(path)
     except FFprobeUnavailable as exc:
-        return [CheckResult("ffprobe", Status.WARNING, detail=str(exc))]
+        return [CheckResult("ffprobe", Status.FAIL, detail=str(exc))]
     except FFprobeError as exc:
         return [CheckResult("ffprobe", Status.FAIL, detail=str(exc))]
 
@@ -60,7 +60,7 @@ def inspect_media(path: Path, rules: VideoRules, check_loudness: bool = True) ->
                 expected=f"{rules.target_lufs:.1f} ± {rules.lufs_tolerance:.1f} LUFS",
             ))
         except FFmpegUnavailable as exc:
-            results.append(CheckResult("Integrated loudness", Status.WARNING, detail=str(exc)))
+            results.append(CheckResult("Integrated loudness", Status.FAIL, detail=str(exc)))
         except LoudnessError as exc:
             results.append(CheckResult("Integrated loudness", Status.WARNING, detail=str(exc)))
 

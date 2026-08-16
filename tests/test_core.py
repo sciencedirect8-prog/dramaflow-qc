@@ -6,16 +6,41 @@ import unittest
 from unittest.mock import Mock, patch
 from pathlib import Path
 
-from dramaflow_qc.config import CONFIG_NAME, ProjectRules, load_config, write_default_config
+from dramaflow_qc.config import CONFIG_NAME, ProjectRules, VideoRules, load_config, write_default_config
 from dramaflow_qc.hash_utils import sha256_file
 from dramaflow_qc.inspectors.ffprobe import FFprobeError, parse_fraction, probe
-from dramaflow_qc.inspectors.loudness import LoudnessError, integrated_lufs
+from dramaflow_qc.inspectors.ffprobe import FFprobeUnavailable, MediaInfo
+from dramaflow_qc.inspectors.loudness import FFmpegUnavailable, LoudnessError, integrated_lufs
+from dramaflow_qc.inspectors.media import inspect_media
 from dramaflow_qc.inspectors.project import inspect_filename, inspect_project
 from dramaflow_qc.models import CheckResult, QCReport, Status
 from dramaflow_qc.report import render_markdown
 
 
 class CoreTests(unittest.TestCase):
+    @patch("dramaflow_qc.inspectors.media.probe", side_effect=FFprobeUnavailable("ffprobe was not found on PATH"))
+    def test_missing_ffprobe_is_a_failed_check(self, probe_mock):
+        results = inspect_media(Path("E01_MASTER.mp4"), VideoRules())
+        self.assertEqual(results[0].name, "ffprobe")
+        self.assertEqual(results[0].status, Status.FAIL)
+        self.assertEqual(QCReport("demo", results).final_status, Status.FAIL)
+
+    @patch("dramaflow_qc.inspectors.media.integrated_lufs", side_effect=FFmpegUnavailable("ffmpeg was not found on PATH"))
+    @patch("dramaflow_qc.inspectors.media.probe")
+    def test_missing_ffmpeg_fails_requested_loudness_check(self, probe_mock, lufs_mock):
+        probe_mock.return_value = MediaInfo(1080, 1920, 24.0, "h264", "aac", 48000, 1.0)
+        results = inspect_media(Path("E01_MASTER.mp4"), VideoRules())
+        loudness = next(item for item in results if item.name == "Integrated loudness")
+        self.assertEqual(loudness.status, Status.FAIL)
+        self.assertEqual(QCReport("demo", results).final_status, Status.FAIL)
+
+    @patch("dramaflow_qc.inspectors.media.integrated_lufs")
+    @patch("dramaflow_qc.inspectors.media.probe")
+    def test_no_loudness_does_not_require_ffmpeg(self, probe_mock, lufs_mock):
+        probe_mock.return_value = MediaInfo(1080, 1920, 24.0, "h264", "aac", 48000, 1.0)
+        results = inspect_media(Path("E01_MASTER.mp4"), VideoRules(), check_loudness=False)
+        lufs_mock.assert_not_called()
+        self.assertEqual(QCReport("demo", results).final_status, Status.PASS)
     def test_parse_fraction(self):
         self.assertEqual(parse_fraction("24/1"), 24.0)
         self.assertAlmostEqual(parse_fraction("24000/1001"), 23.9760239, places=5)
