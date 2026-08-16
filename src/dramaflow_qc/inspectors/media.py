@@ -3,12 +3,22 @@ from __future__ import annotations
 from pathlib import Path
 
 from dramaflow_qc.config import VideoRules
+from dramaflow_qc.inspectors.decode import (
+    DecodeIntegrityError,
+    DecodeIntegrityUnavailable,
+    check_decode_integrity,
+)
 from dramaflow_qc.inspectors.ffprobe import FFprobeError, FFprobeUnavailable, probe
 from dramaflow_qc.inspectors.loudness import FFmpegUnavailable, LoudnessError, integrated_lufs
 from dramaflow_qc.models import CheckResult, Status
 
 
-def inspect_media(path: Path, rules: VideoRules, check_loudness: bool = True) -> list[CheckResult]:
+def inspect_media(
+    path: Path,
+    rules: VideoRules,
+    check_loudness: bool = True,
+    check_decode: bool = False,
+) -> list[CheckResult]:
     results: list[CheckResult] = []
     try:
         info = probe(path)
@@ -63,5 +73,18 @@ def inspect_media(path: Path, rules: VideoRules, check_loudness: bool = True) ->
             results.append(CheckResult("Integrated loudness", Status.FAIL, detail=str(exc)))
         except LoudnessError as exc:
             results.append(CheckResult("Integrated loudness", Status.WARNING, detail=str(exc)))
+
+    if check_decode:
+        try:
+            check_decode_integrity(path)
+            results.append(CheckResult(
+                "Decode integrity",
+                Status.PASS,
+                detail="Full FFmpeg decode completed without fatal errors.",
+            ))
+        except DecodeIntegrityUnavailable as exc:
+            results.append(CheckResult("Decode integrity", Status.FAIL, detail=str(exc)))
+        except DecodeIntegrityError as exc:
+            results.append(CheckResult("Decode integrity", Status.FAIL, detail=str(exc)))
 
     return results

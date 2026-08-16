@@ -15,6 +15,7 @@ It turns repeatable delivery requirements into machine-checkable rules and produ
 - Video codec check
 - Audio sample-rate check
 - EBU R128 integrated loudness check via FFmpeg
+- Optional full decode integrity check via FFmpeg
 - SHA256 file integrity hash
 - Configurable filename rule
 - Configurable required project paths
@@ -48,6 +49,12 @@ Check a video:
 
 ```bash
 dramaflow-qc check E01_MASTER_9x16.mp4
+```
+
+Run an opt-in full decode integrity check:
+
+```bash
+dramaflow-qc check E01_MASTER.mp4 --decode-integrity
 ```
 
 The default report is written to:
@@ -86,6 +93,20 @@ The generated `.dramaflow-qc.json` starts with creator-friendly vertical-video d
 
 Edit these values to match your own pipeline.
 
+## Decode integrity
+
+Metadata can look valid even when a media file contains corrupt or incomplete packets. Decode Integrity performs a full FFmpeg decode pass and fails the QC report if FFmpeg reports fatal decode errors.
+
+Decode Integrity is opt-in because full-file decoding can be more expensive than metadata inspection and may take approximately media-duration-scale processing time depending on hardware and codecs.
+
+Use:
+
+```bash
+dramaflow-qc check VIDEO.mp4 --decode-integrity
+```
+
+When `--decode-integrity` is requested, FFmpeg must be available on `PATH`. Decode failures produce a normal Markdown QC report with final status `FAIL` and exit code `2`.
+
 ## Exit codes
 
 - `0`: QC completed without FAIL results.
@@ -95,7 +116,6 @@ This makes DramaFlow QC suitable for local automation and CI.
 
 ## Roadmap
 
-- Full decode integrity check
 - Subtitle/SRT event checks
 - JSON report output
 - Batch folder scanning
