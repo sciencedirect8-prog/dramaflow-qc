@@ -57,10 +57,16 @@ class CoreTests(unittest.TestCase):
         check_decode_integrity(media)
 
         command = run_mock.call_args.args[0]
-        self.assertEqual(command[:5], ["ffmpeg", "-v", "error", "-xerror", "-i"])
-        self.assertEqual(command[5], str(media))
+        self.assertEqual(command[:6], ["ffmpeg", "-nostdin", "-v", "error", "-xerror", "-i"])
+        self.assertEqual(command[6], str(media))
+        self.assertIn("-nostdin", command)
+        self.assertIn("-map", command)
+        self.assertIn("0:v?", command)
+        self.assertIn("0:a?", command)
+        self.assertEqual(command[7:11], ["-map", "0:v?", "-map", "0:a?"])
         self.assertEqual(command[-3:], ["-f", "null", "-"])
         self.assertEqual(run_mock.call_args.kwargs, {"capture_output": True, "check": False})
+        self.assertNotIn("shell", run_mock.call_args.kwargs)
 
     @patch("dramaflow_qc.inspectors.decode.shutil.which", return_value=None)
     def test_decode_integrity_missing_ffmpeg_fails(self, which_mock):
@@ -78,7 +84,7 @@ class CoreTests(unittest.TestCase):
         )
         run_mock.return_value = completed
 
-        with self.assertRaisesRegex(DecodeIntegrityError, "FFmpeg full decode failed"):
+        with self.assertRaisesRegex(DecodeIntegrityError, "otherwise undecodable"):
             check_decode_integrity(media)
         try:
             check_decode_integrity(media)
@@ -118,7 +124,9 @@ class CoreTests(unittest.TestCase):
 
     @patch(
         "dramaflow_qc.inspectors.media.check_decode_integrity",
-        side_effect=DecodeIntegrityError("FFmpeg full decode failed: corrupt or incomplete media stream detected."),
+        side_effect=DecodeIntegrityError(
+            "FFmpeg full decode failed; media may be corrupt, incomplete, or otherwise undecodable."
+        ),
     )
     @patch("dramaflow_qc.inspectors.media.probe")
     def test_decode_integrity_requested_adds_fail_result(self, probe_mock, decode_mock):

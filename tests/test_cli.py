@@ -43,7 +43,7 @@ class CLITests(unittest.TestCase):
             CheckResult(
                 "Decode integrity",
                 Status.FAIL,
-                detail="FFmpeg full decode failed: corrupt or incomplete media stream detected.",
+                detail="FFmpeg full decode failed; media may be corrupt, incomplete, or otherwise undecodable.",
             )
         ]
         with tempfile.TemporaryDirectory() as tmp:

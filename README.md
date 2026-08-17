@@ -95,7 +95,9 @@ Edit these values to match your own pipeline.
 
 ## Decode integrity
 
-Metadata can look valid even when a media file contains corrupt or incomplete packets. Decode Integrity performs a full FFmpeg decode pass and fails the QC report if FFmpeg reports fatal decode errors.
+Metadata can look valid even when a media file contains corrupt or incomplete packets. Decode Integrity performs a full FFmpeg decode pass over all video and audio streams and fails the QC report if FFmpeg reports fatal decode errors.
+
+Decode Integrity V1 intentionally does not validate subtitle, attachment, or data streams.
 
 Decode Integrity is opt-in because full-file decoding can be more expensive than metadata inspection and may take approximately media-duration-scale processing time depending on hardware and codecs.
 

@@ -43,9 +43,12 @@ def check_decode_integrity(path: Path) -> None:
 
     command = [
         binary,
+        "-nostdin",
         "-v", "error",
         "-xerror",
         "-i", str(path),
+        "-map", "0:v?",
+        "-map", "0:a?",
         "-f", "null",
         "-",
     ]
@@ -58,7 +61,7 @@ def check_decode_integrity(path: Path) -> None:
 
     if completed.returncode != 0:
         output = _diagnostic_excerpt(stderr or stdout, path)
-        detail = "FFmpeg full decode failed: corrupt or incomplete media stream detected."
+        detail = "FFmpeg full decode failed; media may be corrupt, incomplete, or otherwise undecodable."
         if output:
             detail = f"{detail} {output}"
         raise DecodeIntegrityError(detail)
