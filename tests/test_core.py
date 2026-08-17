@@ -8,6 +8,11 @@ from pathlib import Path
 
 from dramaflow_qc.config import CONFIG_NAME, ProjectRules, VideoRules, load_config, write_default_config
 from dramaflow_qc.hash_utils import sha256_file
+from dramaflow_qc.inspectors.decode import (
+    DecodeIntegrityError,
+    DecodeIntegrityUnavailable,
+    check_decode_integrity,
+)
 from dramaflow_qc.inspectors.ffprobe import FFprobeError, parse_fraction, probe
 from dramaflow_qc.inspectors.ffprobe import FFprobeUnavailable, MediaInfo
 from dramaflow_qc.inspectors.loudness import FFmpegUnavailable, LoudnessError, integrated_lufs
@@ -41,6 +46,101 @@ class CoreTests(unittest.TestCase):
         results = inspect_media(Path("E01_MASTER.mp4"), VideoRules(), check_loudness=False)
         lufs_mock.assert_not_called()
         self.assertEqual(QCReport("demo", results).final_status, Status.PASS)
+
+    @patch("dramaflow_qc.inspectors.decode.subprocess.run")
+    @patch("dramaflow_qc.inspectors.decode.shutil.which", return_value="ffmpeg")
+    def test_decode_integrity_passes_when_ffmpeg_decode_succeeds(self, which_mock, run_mock):
+        completed = Mock(returncode=0, stdout=b"", stderr=b"")
+        run_mock.return_value = completed
+        media = Path("\u9879\u76ee with spaces/\u6210\u7247.mp4")
+
+        check_decode_integrity(media)
+
+        command = run_mock.call_args.args[0]
+        self.assertEqual(command[:6], ["ffmpeg", "-nostdin", "-v", "error", "-xerror", "-i"])
+        self.assertEqual(command[6], str(media))
+        self.assertIn("-nostdin", command)
+        self.assertIn("-map", command)
+        self.assertIn("0:v?", command)
+        self.assertIn("0:a?", command)
+        self.assertEqual(command[7:11], ["-map", "0:v?", "-map", "0:a?"])
+        self.assertEqual(command[-3:], ["-f", "null", "-"])
+        self.assertEqual(run_mock.call_args.kwargs, {"capture_output": True, "check": False})
+        self.assertNotIn("shell", run_mock.call_args.kwargs)
+
+    @patch("dramaflow_qc.inspectors.decode.shutil.which", return_value=None)
+    def test_decode_integrity_missing_ffmpeg_fails(self, which_mock):
+        with self.assertRaisesRegex(DecodeIntegrityUnavailable, "ffmpeg was not found on PATH"):
+            check_decode_integrity(Path("E01_MASTER.mp4"))
+
+    @patch("dramaflow_qc.inspectors.decode.subprocess.run")
+    @patch("dramaflow_qc.inspectors.decode.shutil.which", return_value="ffmpeg")
+    def test_decode_integrity_failure_is_controlled_and_sanitized(self, which_mock, run_mock):
+        media = Path(r"C:\private\project\E01_MASTER.mp4")
+        completed = Mock(
+            returncode=1,
+            stdout=b"",
+            stderr=f"{media}: Invalid data found when processing input".encode("utf-8"),
+        )
+        run_mock.return_value = completed
+
+        with self.assertRaisesRegex(DecodeIntegrityError, "otherwise undecodable"):
+            check_decode_integrity(media)
+        try:
+            check_decode_integrity(media)
+        except DecodeIntegrityError as exc:
+            self.assertNotIn(str(media), str(exc))
+            self.assertIn("<media>", str(exc))
+
+    @patch("dramaflow_qc.inspectors.decode.subprocess.run")
+    @patch("dramaflow_qc.inspectors.decode.shutil.which", return_value="ffmpeg")
+    def test_decode_integrity_rejects_invalid_utf8_output(self, which_mock, run_mock):
+        completed = Mock(returncode=1, stdout=b"", stderr=b"decode\xff")
+        run_mock.return_value = completed
+        with self.assertRaisesRegex(DecodeIntegrityError, "could not be decoded as UTF-8"):
+            check_decode_integrity(Path("\u9879\u76ee/\u6210\u7247.mp4"))
+
+    @patch("dramaflow_qc.inspectors.media.check_decode_integrity")
+    @patch("dramaflow_qc.inspectors.media.probe")
+    def test_decode_integrity_not_requested_does_not_call_ffmpeg(self, probe_mock, decode_mock):
+        probe_mock.return_value = MediaInfo(1080, 1920, 24.0, "h264", "aac", 48000, 1.0)
+        results = inspect_media(Path("E01_MASTER.mp4"), VideoRules(), check_loudness=False)
+        decode_mock.assert_not_called()
+        self.assertEqual(QCReport("demo", results).final_status, Status.PASS)
+
+    @patch("dramaflow_qc.inspectors.media.check_decode_integrity")
+    @patch("dramaflow_qc.inspectors.media.probe")
+    def test_decode_integrity_requested_adds_pass_result(self, probe_mock, decode_mock):
+        probe_mock.return_value = MediaInfo(1080, 1920, 24.0, "h264", "aac", 48000, 1.0)
+        results = inspect_media(
+            Path("E01_MASTER.mp4"),
+            VideoRules(),
+            check_loudness=False,
+            check_decode=True,
+        )
+        item = next(result for result in results if result.name == "Decode integrity")
+        self.assertEqual(item.status, Status.PASS)
+        self.assertEqual(QCReport("demo", results).final_status, Status.PASS)
+
+    @patch(
+        "dramaflow_qc.inspectors.media.check_decode_integrity",
+        side_effect=DecodeIntegrityError(
+            "FFmpeg full decode failed; media may be corrupt, incomplete, or otherwise undecodable."
+        ),
+    )
+    @patch("dramaflow_qc.inspectors.media.probe")
+    def test_decode_integrity_requested_adds_fail_result(self, probe_mock, decode_mock):
+        probe_mock.return_value = MediaInfo(1080, 1920, 24.0, "h264", "aac", 48000, 1.0)
+        results = inspect_media(
+            Path("E01_MASTER.mp4"),
+            VideoRules(),
+            check_loudness=False,
+            check_decode=True,
+        )
+        item = next(result for result in results if result.name == "Decode integrity")
+        self.assertEqual(item.status, Status.FAIL)
+        self.assertEqual(QCReport("demo", results).final_status, Status.FAIL)
+
     def test_parse_fraction(self):
         self.assertEqual(parse_fraction("24/1"), 24.0)
         self.assertAlmostEqual(parse_fraction("24000/1001"), 23.9760239, places=5)

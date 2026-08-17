@@ -26,6 +26,11 @@ def build_parser() -> argparse.ArgumentParser:
     check_cmd.add_argument("file")
     check_cmd.add_argument("--report", help="Report path. Defaults to QC_REPORTS/<filename>_QC.md")
     check_cmd.add_argument("--no-loudness", action="store_true", help="Skip EBU R128 loudness analysis.")
+    check_cmd.add_argument(
+        "--decode-integrity",
+        action="store_true",
+        help="Run an opt-in full FFmpeg decode integrity check.",
+    )
 
     project_cmd = sub.add_parser("project", help="Check project-level required paths.")
     project_cmd.add_argument("directory", nargs="?", default=".")
@@ -51,7 +56,12 @@ def cmd_check(args: argparse.Namespace) -> int:
 
     cfg = load_config(path.parent)
     results = [inspect_filename(path, cfg.project)]
-    results.extend(inspect_media(path, cfg.video, check_loudness=not args.no_loudness))
+    results.extend(inspect_media(
+        path,
+        cfg.video,
+        check_loudness=not args.no_loudness,
+        check_decode=args.decode_integrity,
+    ))
     report = QCReport(target=str(path), results=results, sha256=sha256_file(path))
 
     if args.report:
