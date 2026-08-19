@@ -3,9 +3,11 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from unittest.mock import Mock, patch
 from pathlib import Path
 
+from dramaflow_qc import __version__
 from dramaflow_qc.config import CONFIG_NAME, ProjectRules, VideoRules, load_config, write_default_config
 from dramaflow_qc.hash_utils import sha256_file
 from dramaflow_qc.inspectors.decode import (
@@ -19,7 +21,7 @@ from dramaflow_qc.inspectors.loudness import FFmpegUnavailable, LoudnessError, i
 from dramaflow_qc.inspectors.media import inspect_media
 from dramaflow_qc.inspectors.project import inspect_filename, inspect_project
 from dramaflow_qc.models import CheckResult, QCReport, Status
-from dramaflow_qc.report import render_markdown
+from dramaflow_qc.report import report_to_dict, render_json, render_markdown, write_json_report
 
 
 class CoreTests(unittest.TestCase):
@@ -236,6 +238,79 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(report.final_status, Status.WARNING)
         text = render_markdown(report)
         self.assertIn("**WARNING**", text)
+
+    def test_report_to_dict_serializes_schema_summary_order_and_unicode(self):
+        report = QCReport(
+            "D:/项目/成片.mp4",
+            [
+                CheckResult("Resolution", Status.PASS, "1080x1920", "1080x1920"),
+                CheckResult("Filename rule", Status.WARNING, "成片.mp4", "ASCII", "人工复核"),
+                CheckResult("Frame rate", Status.FAIL, "30.000", "24"),
+                CheckResult("Duration", Status.INFO, "93.205s"),
+            ],
+            sha256=None,
+        )
+
+        data = report_to_dict(report, generated_at="2026-08-19T12:00:00+00:00")
+
+        self.assertEqual(data["schema_version"], "1.0")
+        self.assertEqual(data["tool_version"], __version__)
+        self.assertEqual(data["generated_at"], "2026-08-19T12:00:00+00:00")
+        self.assertEqual(data["target"], "D:/项目/成片.mp4")
+        self.assertEqual(data["final_status"], "FAIL")
+        self.assertIsNone(data["sha256"])
+        self.assertEqual(data["summary"], {"total": 4, "pass": 1, "warning": 1, "fail": 1, "info": 1})
+        self.assertEqual([item["name"] for item in data["checks"]], [
+            "Resolution",
+            "Filename rule",
+            "Frame rate",
+            "Duration",
+        ])
+        self.assertEqual(data["checks"][1], {
+            "name": "Filename rule",
+            "status": "WARNING",
+            "actual": "成片.mp4",
+            "expected": "ASCII",
+            "detail": "人工复核",
+        })
+
+    def test_report_to_dict_final_status_values_use_qcreport(self):
+        cases = [
+            ("PASS", [CheckResult("Resolution", Status.PASS)]),
+            ("WARNING", [CheckResult("Filename rule", Status.WARNING)]),
+            ("FAIL", [CheckResult("Frame rate", Status.FAIL)]),
+        ]
+        for expected, results in cases:
+            with self.subTest(expected=expected):
+                self.assertEqual(report_to_dict(QCReport("demo", results))["final_status"], expected)
+
+    def test_render_json_parses_and_preserves_unicode(self):
+        report = QCReport("D:/项目/成片.mp4", [CheckResult("Filename rule", Status.FAIL, "成片.mp4")], sha256="ABC123")
+
+        text = render_json(report, generated_at=datetime(2026, 8, 19, 12, 0, tzinfo=timezone.utc))
+        data = json.loads(text)
+
+        self.assertTrue(text.endswith("\n"))
+        self.assertIn("成片.mp4", text)
+        self.assertEqual(data["sha256"], "ABC123")
+        self.assertEqual(data["checks"][0]["status"], "FAIL")
+
+    def test_report_to_dict_rejects_naive_generated_at(self):
+        report = QCReport("demo", [CheckResult("Resolution", Status.PASS)])
+
+        with self.assertRaisesRegex(ValueError, "timezone-aware"):
+            report_to_dict(report, generated_at=datetime(2026, 8, 19, 12, 0))
+
+    def test_write_json_report_uses_utf8_and_newline(self):
+        report = QCReport("D:/项目/成片.mp4", [CheckResult("Filename rule", Status.PASS, "成片.mp4")])
+        with tempfile.TemporaryDirectory() as tmp:
+            destination = Path(tmp) / "qc.json"
+            write_json_report(report, destination)
+            raw = destination.read_bytes()
+            self.assertTrue(raw.endswith(b"\n"))
+            text = raw.decode("utf-8")
+            self.assertIn("成片.mp4", text)
+            self.assertEqual(json.loads(text)["summary"]["total"], 1)
 
 
 if __name__ == "__main__":

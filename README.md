@@ -109,6 +109,45 @@ dramaflow-qc check VIDEO.mp4 --decode-integrity
 
 When `--decode-integrity` is requested, FFmpeg must be available on `PATH`. Decode failures produce a normal Markdown QC report with final status `FAIL` and exit code `2`.
 
+## Machine-readable JSON reports
+
+Markdown remains the default human-readable report. For CI scripts, local automation, and production consoles that need structured data, `dramaflow-qc check` can also write an optional JSON sidecar:
+
+```bash
+dramaflow-qc check E01_MASTER.mp4 --json-report QC_REPORTS/E01_MASTER_QC.json
+```
+
+`--json-report` does not replace the Markdown report. It writes an additional UTF-8 JSON file from the same QC result object, and exit-code behavior remains unchanged.
+
+The current JSON schema version is `1.0`:
+
+```json
+{
+  "schema_version": "1.0",
+  "tool_version": "0.1.3",
+  "generated_at": "2026-08-19T12:00:00+00:00",
+  "target": "E01_MASTER.mp4",
+  "final_status": "PASS",
+  "sha256": "ABCDEF...",
+  "summary": {
+    "total": 1,
+    "pass": 1,
+    "warning": 0,
+    "fail": 0,
+    "info": 0
+  },
+  "checks": [
+    {
+      "name": "Resolution",
+      "status": "PASS",
+      "actual": "1080x1920",
+      "expected": "1080x1920",
+      "detail": ""
+    }
+  ]
+}
+```
+
 ## Exit codes
 
 - `0`: QC completed without FAIL results.
@@ -119,7 +158,6 @@ This makes DramaFlow QC suitable for local automation and CI.
 ## Roadmap
 
 - Subtitle/SRT event checks
-- JSON report output
 - Batch folder scanning
 - GitHub Actions example
 - Rule profiles for 9:16, 16:9, and platform delivery presets

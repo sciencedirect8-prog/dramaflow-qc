@@ -10,7 +10,7 @@ from dramaflow_qc.hash_utils import sha256_file
 from dramaflow_qc.inspectors.media import inspect_media
 from dramaflow_qc.inspectors.project import inspect_filename, inspect_project
 from dramaflow_qc.models import QCReport, Status
-from dramaflow_qc.report import render_markdown, write_report
+from dramaflow_qc.report import render_markdown, write_json_report, write_report
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -25,6 +25,7 @@ def build_parser() -> argparse.ArgumentParser:
     check_cmd = sub.add_parser("check", help="Check one media file and write a Markdown QC report.")
     check_cmd.add_argument("file")
     check_cmd.add_argument("--report", help="Report path. Defaults to QC_REPORTS/<filename>_QC.md")
+    check_cmd.add_argument("--json-report", help="Write an additional machine-readable JSON QC report.")
     check_cmd.add_argument("--no-loudness", action="store_true", help="Skip EBU R128 loudness analysis.")
     check_cmd.add_argument(
         "--decode-integrity",
@@ -69,8 +70,17 @@ def cmd_check(args: argparse.Namespace) -> int:
     else:
         destination = path.parent / "QC_REPORTS" / f"{path.stem}_QC.md"
     write_report(report, destination)
+    if args.json_report:
+        json_destination = Path(args.json_report).resolve()
+        try:
+            write_json_report(report, json_destination)
+        except OSError as exc:
+            print(f"ERROR: could not write JSON report: {exc}", file=sys.stderr)
+            return 2
     print(render_markdown(report))
     print(f"Report: {destination}")
+    if args.json_report:
+        print(f"JSON report: {json_destination}")
     return _exit_code(report.final_status)
 
 
